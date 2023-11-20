@@ -1,0 +1,9 @@
+dependencies:
+- name: stackrox-central-services
+  repository: https://mirror.openshift.com/pub/rhacs/charts/
+  version: 400.3.0
+- name: stackrox-secured-cluster-services
+  repository: https://mirror.openshift.com/pub/rhacs/charts/
+  version: 400.3.0
+digest: sha256:bf3307643154e48323c11487d93f5a1c2772e794989e44a13227699a484dc499
+generated: "2023-11-20T12:09:51.032676475-05:00"

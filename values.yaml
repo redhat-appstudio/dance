@@ -16,3 +16,10 @@ quay:
   registry: quay.io
   username: admin
   password: admin
+
+# Workaround: Helm will install all charts in a single
+# namespace/name, forcing the chart to use non-standard
+# namespaces/names.
+stackrox-secured-cluster-services:
+  allowNonstandardNamespace: true
+  allowNonstandardReleaseName: true
