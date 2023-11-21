@@ -126,51 +126,83 @@ apply() {
 }
 
 release() {
+  branch=$(git branch --show-current)
   # Check that the repository is in the right state
   if ! git diff --exit-code >/dev/null; then
     echo "Cannot release a version with uncommitted changes" >&2
     exit 1
   fi
-  git pull --rebase
+  if ! git diff origin/$branch --exit-code >/dev/null; then
+    echo "Cannot release a version that is not synced to the origin" >&2
+    exit 1
+  fi
+
+  # Check out repository
+  HELM_REPOSITORY="$(mktemp -d)"
+  git clone git@github.com:redhat-appstudio/helm-repository.git \
+    --branch "$branch" \
+    --single-branch "$HELM_REPOSITORY"
 
   # Create package
   cd "$HELM_CHART"
-  package="/$(helm package . | cut -d/ -f2-)"
-  version="$(
-    basename "$package" |
-      grep --extended-regex --only-matching "([0-9]+\.){3}tgz$" |
-      cut -d. -f 1-3
-  )"
+  helm package --destination "$HELM_REPOSITORY" .
+  _get_versions
   git tag --force "$version"
   git push --tags
 
   # Update version
-  major_minor="$(echo "$version" | cut -d. -f 1,2)"
-  patch="$(echo "$(($(echo "$version" | cut -d. -f 3) + 1))")"
-  new_version="$major_minor.$patch"
-  sed -i -e "s|^version: \+$version$|version: $new_version|" Chart.yaml
+  sed -i -e "s|^version: \+$version$|version: $next_version|" Chart.yaml
   git add .
-  git commit -m "Init v$new_version"
+  git commit -m "Init v$next_version"
   git push
 
   # Release package
-  TMPDIR="$(mktemp -d)"
-  cd "$TMPDIR"
-  git clone git@github.com:redhat-appstudio/helm-repository.git
-  cd helm-repository
-  mv "$package" "."
+  cd "$HELM_REPOSITORY"
   helm repo index .
   git add .
-  git commit -m "Release $version"
+  git commit -m "Release $version
+  
+  Updates from $previous_version:
+  $(
+    git -C "$HELM_CHART" log \
+      --reverse --format="  - %s" "$previous_version^..$version" \
+      -- Chart.yaml values.yaml templates |
+      tail -n +2
+  )
+  "
   git push
   git tag --force "$version"
   git push --tags
   cd -
-  rm -rf "$TMPDIR"
+  rm -rf "$HELM_REPOSITORY"
 }
 
 template() {
   $helm template "$APP_NAME" "$VERSION"
+}
+
+_get_versions() {
+  version="$(
+    git -C "$HELM_REPOSITORY" status | cut -c4- |
+      grep --extended-regex --only-matching "([0-9]+\.){3}tgz$" |
+      cut -d. -f 1-3
+  )"
+
+  for previous_version in $(
+    git log --simplify-by-decoration --format=%D |
+      sed -e 's|, tag: |\n|g' -e 's|^tag: ||' |
+      grep --extended-regex "^([0-9]+\.){2}[0-9]+$" |
+      sort --reverse --sort=version
+  ); do
+    if [ "$(echo -e "$previous_version\n$version" | sort --sort=version | head -1)" != "$version" ]; then
+      break
+    fi
+    unset previous_version
+  done
+
+  major_minor="$(echo "$version" | cut -d. -f 1,2)"
+  patch="$(echo "$(($(echo "$version" | cut -d. -f 3) + 1))")"
+  next_version="$major_minor.$patch"
 }
 
 main() {
