@@ -1,4 +1,4 @@
-{{ if eq (len (lookup "v1" "Namespace" "" (index .Values "openshift-gitops" "argocd-namespace"))) 0 }}
+{{ if and (eq (len (lookup "v1" "Namespace" "" (index .Values "openshift-gitops" "argocd-namespace"))) 0) (eq (len (lookup "v1" "Namespace" "" (index .Values "openshift-gitops" "argocd-namespace"))) 0) }}
 apiVersion: v1
 kind: Namespace
 metadata:

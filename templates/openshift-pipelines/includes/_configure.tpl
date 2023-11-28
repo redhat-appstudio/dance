@@ -22,7 +22,6 @@
         echo -n "."
         sleep 3
       done
-      echo
       echo "OK"
 
       # All actions must be idempotent
