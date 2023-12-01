@@ -8,6 +8,10 @@
       set -o errexit
       set -o nounset
       set -o pipefail
+      {
+      ################################################################################
+      # Dependencies
+      ################################################################################
 
       # The OperatorGroup is required to install the operator.
       # c.f. https://olm.operatorframework.io/docs/tasks/install-operator-with-olm/#prerequisites
@@ -50,6 +54,10 @@
       echo -n "* Add RHACS chart repository: "
       helm repo add rhacs https://mirror.openshift.com/pub/rhacs/charts/
 
+      ################################################################################
+      # Central Service
+      ################################################################################
+
       echo "* Configure ACS Central Service"
       helm upgrade --install -n stackrox --create-namespace \
         stackrox-central-services rhacs/central-services \
@@ -57,12 +65,13 @@
         --set central.persistence.none=true \
         --set imagePullSecrets.useFromDefaultServiceAccount=true \
         | tee central.log
-      password="$(grep "^ *[A-Za-z0-9]\+$" central.log | tr -d ' ')"
-      if [ -n "${password:-}" ]; then
+
+      PASSWORD="$(grep "^ *[A-Za-z0-9]\+$" central.log | tr -d ' ')"
+      if [ -n "${PASSWORD:-}" ]; then
         echo -n "Create secret: "
-        oc create secret generic -n stackrox central-credentials --from-literal="password=$password" --from-literal="user=admin"
+        oc create secret generic -n stackrox central-credentials --from-literal="password=$PASSWORD" --from-literal="user=admin"
       else
-        password="$(
+        PASSWORD="$(
           oc get secrets -n stackrox central-credentials -o yaml \
           | grep " password: " \
           | cut -d ' ' -f4 \
@@ -70,12 +79,51 @@
           )"
       fi
 
-      echo "* Configure ACS Secured Cluster Service"
-      echo helm upgrade --install -n stackrox --create-namespace \
-        stackrox-secured-cluster-services rhacs/secured-cluster-services \
-        --set scanner.disable=false \
-        --set clusterName=local \
-        # -f <path_to_cluster_init_bundle.yaml> \
-        # --set centralEndpoint=<endpoint_of_central_service>
-      sleep 900
+      ################################################################################
+      # Init bundle
+      ################################################################################
+      # Source: https://github.com/redhat-cop/gitops-catalog/blob/main/advanced-cluster-security-operator/instance/base/create-cluster-init-bundle-job.yaml
+      if kubectl get secret/sensor-tls &> /dev/null; then
+        echo "* Configure cluster-init bundle: cluster-init bundle has already been configured, doing nothing"
+      else
+        echo -n "* Waiting on central: "
+        # Wait for central to be ready
+        attempt_counter=0
+        max_attempts=20
+        URL="https://$(kubectl get routes -n stackrox central -o yaml | grep "^  host: " | cut -d' ' -f4)"
+        until $(curl -k --output /dev/null --silent --head --fail "$URL"); do
+            if [ ${attempt_counter} -eq ${max_attempts} ];then
+              echo "Max attempts reached waiting for central to be available at '$URL'"
+              false
+            fi
+
+            printf '.'
+            attempt_counter=$(($attempt_counter+1))
+            sleep 5
+        done
+        echo "OK"
+
+        echo "* Configuring cluster-init bundle: "
+        export DATA={\"name\":\"local-cluster\"}
+        curl -k -o /tmp/bundle.json -X POST -u "admin:$PASSWORD" -H "Content-Type: application/json" --data $DATA https://central/v1/cluster-init/init-bundles
+
+        echo "Bundle received"
+        cat /tmp/bundle.json
+
+        echo "Applying bundle"
+        # No jq in container, python to the rescue
+        cat /tmp/bundle.json | python3 -c "import sys, json; print(json.load(sys.stdin)['kubectlBundle'])" | base64 -d | oc apply -f -
+        # Touch SecuredCluster to force operator to reconcile
+        oc label SecuredCluster local-cluster cluster-init-job-status=created
+      fi
+
+      # echo "* Configure ACS Secured Cluster Service"
+      # echo helm upgrade --install -n stackrox --create-namespace \
+      #   stackrox-secured-cluster-services rhacs/secured-cluster-services \
+      #   --set scanner.disable=false \
+      #   --set clusterName=local \
+      #   # -f <path_to_cluster_init_bundle.yaml> \
+      #   # --set centralEndpoint=<endpoint_of_central_service>
+      # sleep 900
+      } || { echo "FAILED"; sleep 900; }
 {{ end }}
