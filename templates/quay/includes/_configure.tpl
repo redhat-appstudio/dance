@@ -1,4 +1,4 @@
-{{ define "dance.configure.quay" }}
+{{ define "dance.quay.configure" }}
 - name: configure-quay
   image: "k8s.gcr.io/hyperkube:v1.12.1"
   command:

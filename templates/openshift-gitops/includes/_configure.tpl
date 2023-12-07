@@ -1,4 +1,4 @@
-{{ define "dance.configure.gitops" }}
+{{ define "dance.gitops.configure" }}
 - name: configure-gitops
   image: "k8s.gcr.io/hyperkube:v1.12.1"
   command:

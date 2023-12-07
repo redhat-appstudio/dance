@@ -1,0 +1,9 @@
+{{ if and (index .Values "developer-hub") (index .Values "developer-hub" "quay-token") }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rhdh-pull-secret
+data:
+  .dockerconfigjson: {{ (index .Values "developer-hub" "quay-token") }}
+type: kubernetes.io/dockerconfigjson
+{{ end }}

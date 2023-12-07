@@ -21,4 +21,7 @@ quay:
 # You may want to override those variables in another file (e.g. values-private.yaml)
 acs:
   central-endpoint: central.acs.mycluster.com:443
-  api-token: eyAbC123...890XyZ
+  api-token: eyAbC123...acs...890XyZ
+developer-hub:
+  # This should be removed once RHDH is GA
+  quay-token: eyAbC123...rhdh...890XyZ

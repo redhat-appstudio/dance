@@ -1,0 +1,6 @@
+dependencies:
+- name: developer-hub
+  repository: https://gist.githubusercontent.com/rhdh-bot/63cef5cb6285889527bd6a67c0e1c2a9/raw/10184db43cf7267dee2edc87af072f53beaa4fa1
+  version: 1.0-200-CI
+digest: sha256:50e624e003c158da23e00311ac0529326f30b279fb3cc02a06952bdf90ed63d4
+generated: "2023-12-07T08:00:32.333904605-05:00"

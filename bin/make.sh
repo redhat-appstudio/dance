@@ -117,6 +117,7 @@ parse_args() {
 init() {
   helm repo add dance https://redhat-appstudio.github.io/helm-repository/ >/dev/null
   helm repo update dance >/dev/null
+  helm dependencies update >/dev/null
 }
 
 delete() {
@@ -181,7 +182,7 @@ release() {
 }
 
 template() {
-  $helm template "$APP_NAME" "$VERSION"
+  $helm template "$APP_NAME" "$VERSION" "${PASSTHROUGH_ARGS[@]}"
 }
 
 test() {

@@ -1,4 +1,4 @@
-{{ define "dance.configure.pipelines" }}
+{{ define "dance.pipelines.configure" }}
 - name: configure-pipelines
   image: "k8s.gcr.io/hyperkube:v1.12.1"
   command:

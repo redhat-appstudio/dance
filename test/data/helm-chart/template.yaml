@@ -12,6 +12,15 @@ metadata:
   name: helm-manager
   namespace: redhat-dance
 ---
+# Source: dance/templates/developer-hub/quay-token.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rhdh-pull-secret
+data:
+  .dockerconfigjson: eyAbC123...rhdh...890XyZ
+type: kubernetes.io/dockerconfigjson
+---
 # Source: dance/templates/serviceaccount.yaml
 # The ServiceAccount needs to be able to manage resources that
 # might not be declated until after Subscriptions have been
@@ -130,7 +139,7 @@ spec:
                         (example - rox.stackrox.io:443)
                       name: rox_central_endpoint
                       type: string
-                    - default: "eyAbC123...890XyZ"
+                    - default: "eyAbC123...acs...890XyZ"
                       description: |
                         Secret containing the StackRox API token with CI permissions
                       name: rox_api_token
@@ -202,7 +211,7 @@ spec:
                       (example - rox.stackrox.io:443)
                     name: rox_central_endpoint
                     type: string
-                  - default: "eyAbC123...890XyZ"
+                  - default: "eyAbC123...acs...890XyZ"
                     description: |
                       Secret containing the StackRox API token with CI permissions
                     name: rox_api_token
@@ -278,7 +287,7 @@ spec:
                       (example - rox.stackrox.io:443)
                     name: rox_central_endpoint
                     type: string
-                  - default: "eyAbC123...890XyZ"
+                  - default: "eyAbC123...acs...890XyZ"
                     description: |
                       Secret containing the StackRox API token with CI permissions
                     name: rox_api_token
