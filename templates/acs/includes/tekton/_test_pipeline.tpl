@@ -1,5 +1,5 @@
 {{ define "dance.acs.test_pipeline" }}
-# oc create -n redhat-dance -f acs-pipelinerun.yaml
+# oc create -n {{ .Release.Namespace }} -f acs-pipelinerun.yaml
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
@@ -16,7 +16,7 @@ spec:
           - name: name
             value: acs-deploy-check
           - name: namespace
-            value: redhat-dance
+            value: {{ .Release.Namespace }}
       params:
         - name: deployment_url
           value: https://raw.githubusercontent.com/jduimovich/quarkus-1/main/argocd/components/q/base/deployment.yaml
@@ -31,7 +31,7 @@ spec:
           - name: name
             value: acs-image-check
           - name: namespace
-            value: redhat-dance
+            value: {{ .Release.Namespace }}
       params:
         - name: image
           value: quay.io/team-helium/miner
@@ -48,7 +48,7 @@ spec:
           - name: name
             value: acs-image-scan
           - name: namespace
-            value: redhat-dance
+            value: {{ .Release.Namespace }}
       params:
         - name: image
           value: quay.io/team-helium/miner

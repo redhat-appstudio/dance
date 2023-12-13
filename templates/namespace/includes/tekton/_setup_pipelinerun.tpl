@@ -15,7 +15,7 @@ spec:
             - name: name
               value: {{ .Chart.Name }}-namespace-setup
             - name: namespace
-              value: redhat-dance
+              value: {{ .Release.Namespace }}
         params:
           - name: acs_central_endpoint
             value: {{ (index .Values "acs" "central-endpoint") }}

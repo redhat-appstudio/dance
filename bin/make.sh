@@ -51,7 +51,7 @@ Example:
 }
 
 set_defaults() {
-  NAMESPACE=${NAMESPACE:-redhat-dance}
+  NAMESPACE=${NAMESPACE:-dance-installer}
   APP_NAME=${APP_NAME:-installer}
   HELM_CHART="$(
     cd "$SCRIPT_DIR/.." >/dev/null

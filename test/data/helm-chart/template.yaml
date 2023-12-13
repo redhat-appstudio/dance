@@ -3,21 +3,21 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: developer-argocd
+  name: dance-argocd
 ---
 # Source: dance/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: helm-manager
-  namespace: redhat-dance
+  namespace: dance-installer
 ---
 # Source: dance/charts/developer-hub/charts/upstream/charts/postgresql/templates/secrets.yaml
 apiVersion: v1
 kind: Secret
 metadata:
   name: installer-postgresql
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/instance: installer
     app.kubernetes.io/managed-by: Helm
@@ -35,7 +35,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: installer-developer-hub-auth
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/name: developer-hub
     helm.sh/chart: developer-hub-1.0-200-CI
@@ -65,14 +65,14 @@ metadata:
 data:
   app-config.yaml: |
     app:
-      baseUrl: https://installer-developer-hub-redhat-dance.apps.example.com
+      baseUrl: https://installer-developer-hub-dance-installer.apps.example.com
     backend:
       auth:
         keys:
         - secret: ${BACKEND_SECRET}
-      baseUrl: https://installer-developer-hub-redhat-dance.apps.example.com
+      baseUrl: https://installer-developer-hub-dance-installer.apps.example.com
       cors:
-        origin: https://installer-developer-hub-redhat-dance.apps.example.com
+        origin: https://installer-developer-hub-dance-installer.apps.example.com
       database:
         connection:
           password: ${POSTGRESQL_ADMIN_PASSWORD}
@@ -111,14 +111,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: helm-manager
-    namespace: redhat-dance
+    namespace: dance-installer
 ---
 # Source: dance/charts/developer-hub/charts/upstream/charts/postgresql/templates/primary/svc-headless.yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: installer-postgresql-hl
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/instance: installer
     app.kubernetes.io/managed-by: Helm
@@ -153,7 +153,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: installer-postgresql
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/instance: installer
     app.kubernetes.io/managed-by: Helm
@@ -179,7 +179,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: installer-developer-hub
-  namespace: "redhat-dance" 
+  namespace: "dance-installer" 
   labels:
     app.kubernetes.io/name: developer-hub
     helm.sh/chart: upstream-1.8.0
@@ -205,7 +205,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: installer-developer-hub
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels: 
     app.kubernetes.io/name: developer-hub
     helm.sh/chart: upstream-1.8.0
@@ -230,7 +230,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/component: backstage
       annotations:
-        checksum/app-config: c806fe5ce1c3a3624421281e53ae8e7d85c6dc724d677b10607e2a7884b5af77
+        checksum/app-config: 28661b8d257d16030d058df4a7416ee91bd10d2e283801b5d6bb98f7cb70987c
         checksum/dynamic-plugins: 'f1f9a92f14a31362d7eb30e67ac1458faf1c685765610f93a8967194d8bc1a5f'
     spec:
       serviceAccountName: default
@@ -351,7 +351,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: installer-postgresql
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/instance: installer
     app.kubernetes.io/managed-by: Helm
@@ -512,7 +512,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: installer-developer-hub
-  namespace: "redhat-dance"
+  namespace: "dance-installer"
   labels:
     app.kubernetes.io/name: developer-hub
     helm.sh/chart: developer-hub-1.0-200-CI
@@ -609,6 +609,218 @@ spec:
         helm.sh/chart: "dance-0.4.2"
     spec:
       containers:
+                
+        - name: configure-gitops
+          image: "quay.io/codeready-toolchain/oc-client-base:latest"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -o errexit
+              set -o nounset
+              set -o pipefail
+        
+              echo -n "* Installing 'argocd' CLI: "
+              curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+              chmod 555 argocd
+              ./argocd version --client | head -1 | cut -d' ' -f2
+              
+              CRD="argocds"
+              echo -n "* Waiting for '$CRD' CRD: "
+              while [ $(kubectl api-resources | grep -c "^$CRD ") = "0" ] ; do
+                echo -n "."
+                sleep 3
+              done
+              echo "OK"
+        
+              echo -n "* Waiting for gitops operator deployment: "
+              until kubectl get "$CRD" openshift-gitops -n openshift-gitops >/dev/null 2>&1; do
+                echo -n "."
+                sleep 3
+              done
+              echo "OK"
+        
+              #
+              # All actions must be idempotent
+              #
+              CHART="dance"
+              ARGOCD_NAMESPACE="dance-argocd"
+              echo -n "* ArgoCD resource: "
+              until kubectl get namespace "$ARGOCD_NAMESPACE" >/dev/null 2>&1; do
+                echo -n "."
+                sleep 3
+              done
+              cat << EOF | kubectl apply -n "$ARGOCD_NAMESPACE" -f - >/dev/null
+                      
+                apiVersion: argoproj.io/v1beta1
+                kind: ArgoCD
+                metadata:
+                  name: dance-argocd
+                spec:
+                  server:
+                    autoscale:
+                      enabled: false
+                    grpc:
+                      ingress:
+                        enabled: false
+                    ingress:
+                      enabled: false
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 256Mi
+                      requests:
+                        cpu: 125m
+                        memory: 128Mi
+                    route:
+                      enabled: true
+                    service:
+                      type: ''
+                  grafana:
+                    enabled: false
+                    ingress:
+                      enabled: false
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 256Mi
+                      requests:
+                        cpu: 250m
+                        memory: 128Mi
+                    route:
+                      enabled: false
+                  monitoring:
+                    enabled: false
+                  notifications:
+                    enabled: false
+                  prometheus:
+                    enabled: false
+                    ingress:
+                      enabled: false
+                    route:
+                      enabled: false
+                  initialSSHKnownHosts: {}
+                  sso:
+                    dex:
+                      openShiftOAuth: true
+                      resources:
+                        limits:
+                          cpu: 500m
+                          memory: 256Mi
+                        requests:
+                          cpu: 250m
+                          memory: 128Mi
+                    provider: dex
+                  applicationSet:
+                    resources:
+                      limits:
+                        cpu: '2'
+                        memory: 1Gi
+                      requests:
+                        cpu: 250m
+                        memory: 512Mi
+                    webhookServer:
+                      ingress:
+                        enabled: false
+                      route:
+                        enabled: false
+                  rbac:
+                    defaultPolicy: ''
+                    policy: |
+                      g, system:cluster-admins, role:admin
+                      g, cluster-admins, role:admin
+                    scopes: '[groups]'
+                  repo:
+                    resources:
+                      limits:
+                        cpu: '1'
+                        memory: 1Gi
+                      requests:
+                        cpu: 250m
+                        memory: 256Mi
+                  resourceExclusions: |
+                    - apiGroups:
+                      - tekton.dev
+                      clusters:
+                      - '*'
+                      kinds:
+                      - TaskRun
+                      - PipelineRun
+                  ha:
+                    enabled: false
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 256Mi
+                      requests:
+                        cpu: 250m
+                        memory: 128Mi
+                  tls:
+                    ca: {}
+                  redis:
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 256Mi
+                      requests:
+                        cpu: 250m
+                        memory: 128Mi
+                  controller:
+                    processors: {}
+                    resources:
+                      limits:
+                        cpu: '2'
+                        memory: 2Gi
+                      requests:
+                        cpu: 250m
+                        memory: 1Gi
+                  extraConfig:
+                    accounts.admin-dance: apiKey
+                
+              EOF
+              echo "OK"
+        
+              echo -n "* ArgoCD dashboard: "
+              test_cmd="kubectl get route -n  "$ARGOCD_NAMESPACE" "$CHART-argocd-server" --ignore-not-found -o jsonpath={.spec.host}"
+              argocd_hostname="$(${test_cmd})"
+              until curl --fail --insecure --output /dev/null --silent "https://$argocd_hostname"; do
+                echo -n "."
+                sleep 2
+                argocd_hostname="$(${test_cmd})"
+              done
+              echo "OK"
+        
+              echo -n "* ArgoCD Login: "
+              argocd_password="$(kubectl get secret -n "$ARGOCD_NAMESPACE" "$CHART-argocd-cluster" -o jsonpath="{.data.admin\.password}" | base64 --decode)"
+              ./argocd login "$argocd_hostname" --grpc-web --insecure --username admin --password "$argocd_password" >/dev/null
+              echo "OK"
+              # echo "argocd login '$argocd_hostname' --grpc-web --insecure --username admin --password '$argocd_password'"
+        
+              echo -n "* ArgoCD 'admin-$CHART' token: "
+              if [ "$(kubectl get secret "$CHART-argocd-secret" -o name --ignore-not-found | wc -l)" = "0" ]; then
+                echo -n "." 
+                API_TOKEN="$(./argocd account generate-token --account "admin-$CHART")"
+                echo -n "."
+                kubectl create secret generic "$CHART-argocd-secret" \
+                  --from-literal="admin-$CHART=$API_TOKEN" >/dev/null
+              fi
+              echo "OK"
+        
+              echo -n "* Disable ArgoCD admin user: "
+              kubectl patch argocd -n "$ARGOCD_NAMESPACE" "$CHART-argocd" --type 'merge' --patch '        
+                {
+                  "spec": {
+                    "extraConfig": {
+                      "admin.enabled": "false"
+                    }
+                  }
+                }
+                ' >/dev/null
+              echo "OK"
+        
+              echo
+              echo "Configuration successful"
+        
                 
         - name: configure-acs
           image: "quay.io/codeready-toolchain/oc-client-base:latest"
@@ -876,14 +1088,14 @@ spec:
               set -o pipefail
         
               echo -n "* Waiting for route: "
-              until kubectl get route -n redhat-dance installer-developer-hub -o name --ignore-not-found >/dev/null ; do
+              until kubectl get route installer-developer-hub -o name --ignore-not-found >/dev/null ; do
                 echo -n "."
                 sleep 3
               done
               echo "OK"
         
               echo -n "* Waiting for UI: "
-              URL="https://$(kubectl get route -n redhat-dance installer-developer-hub -o jsonpath='{.spec.host}')"
+              URL="https://$(kubectl get route installer-developer-hub -o jsonpath='{.spec.host}')"
               until curl --fail --location --output /dev/null --silent "$URL"; do
                 echo -n "."
                 sleep 3
@@ -893,167 +1105,6 @@ spec:
               echo
               echo "Configuration successful"
         
-        
-                
-        - name: configure-gitops
-          image: "k8s.gcr.io/hyperkube:v1.12.1"
-          command:
-            - /bin/sh
-            - -c
-            - |
-              set -o errexit
-              set -o nounset
-              set -o pipefail
-              
-              CRD="argocds"
-              echo -n "* Waiting for '$CRD' CRD: "
-              while [ $(kubectl api-resources | grep -c "^$CRD ") = "0" ] ; do
-                echo -n "."
-                sleep 3
-              done
-              echo "OK"
-        
-              echo -n "* Waiting for gitops operator deployment: "
-              until kubectl get "$CRD" openshift-gitops -n openshift-gitops >/dev/null 2>&1; do
-                echo -n "."
-                sleep 3
-              done
-              echo "OK"
-        
-              #
-              # All actions must be idempotent
-              #
-              echo -n "* ArgoCD resource: "
-              cat << EOF | kubectl apply -n developer-argocd -f - >/dev/null
-                      
-                apiVersion: argoproj.io/v1beta1
-                kind: ArgoCD
-                metadata:
-                  name: developer-argocd
-                spec:
-                  server:
-                    autoscale:
-                      enabled: false
-                    grpc:
-                      ingress:
-                        enabled: false
-                    ingress:
-                      enabled: false
-                    resources:
-                      limits:
-                        cpu: 500m
-                        memory: 256Mi
-                      requests:
-                        cpu: 125m
-                        memory: 128Mi
-                    route:
-                      enabled: true
-                    service:
-                      type: ''
-                  grafana:
-                    enabled: false
-                    ingress:
-                      enabled: false
-                    resources:
-                      limits:
-                        cpu: 500m
-                        memory: 256Mi
-                      requests:
-                        cpu: 250m
-                        memory: 128Mi
-                    route:
-                      enabled: false
-                  monitoring:
-                    enabled: false
-                  notifications:
-                    enabled: false
-                  prometheus:
-                    enabled: false
-                    ingress:
-                      enabled: false
-                    route:
-                      enabled: false
-                  initialSSHKnownHosts: {}
-                  sso:
-                    dex:
-                      openShiftOAuth: true
-                      resources:
-                        limits:
-                          cpu: 500m
-                          memory: 256Mi
-                        requests:
-                          cpu: 250m
-                          memory: 128Mi
-                    provider: dex
-                  applicationSet:
-                    resources:
-                      limits:
-                        cpu: '2'
-                        memory: 1Gi
-                      requests:
-                        cpu: 250m
-                        memory: 512Mi
-                    webhookServer:
-                      ingress:
-                        enabled: false
-                      route:
-                        enabled: false
-                  rbac:
-                    defaultPolicy: ''
-                    policy: |
-                      g, system:cluster-admins, role:admin
-                      g, cluster-admins, role:admin
-                    scopes: '[groups]'
-                  repo:
-                    resources:
-                      limits:
-                        cpu: '1'
-                        memory: 1Gi
-                      requests:
-                        cpu: 250m
-                        memory: 256Mi
-                  resourceExclusions: |
-                    - apiGroups:
-                      - tekton.dev
-                      clusters:
-                      - '*'
-                      kinds:
-                      - TaskRun
-                      - PipelineRun
-                  ha:
-                    enabled: false
-                    resources:
-                      limits:
-                        cpu: 500m
-                        memory: 256Mi
-                      requests:
-                        cpu: 250m
-                        memory: 128Mi
-                  tls:
-                    ca: {}
-                  redis:
-                    resources:
-                      limits:
-                        cpu: 500m
-                        memory: 256Mi
-                      requests:
-                        cpu: 250m
-                        memory: 128Mi
-                  controller:
-                    processors: {}
-                    resources:
-                      limits:
-                        cpu: '2'
-                        memory: 2Gi
-                      requests:
-                        cpu: 250m
-                        memory: 1Gi
-                
-              EOF
-              echo "OK"
-        
-              echo
-              echo "Configuration successful"
         
                 
         - name: configure-namespace
@@ -1239,7 +1290,7 @@ spec:
                             - name: name
                               value: dance-namespace-setup
                             - name: namespace
-                              value: redhat-dance
+                              value: dance-installer
                         params:
                           - name: acs_central_endpoint
                             value: central.acs.mycluster.com:443
@@ -1274,7 +1325,7 @@ spec:
         
               pipeline_id="$(cat << EOF | kubectl create -f - | cut -d' ' -f 1
                       
-                # oc create -n redhat-dance -f acs-pipelinerun.yaml
+                # oc create -n dance-installer -f acs-pipelinerun.yaml
                 apiVersion: tekton.dev/v1
                 kind: PipelineRun
                 metadata:
@@ -1291,7 +1342,7 @@ spec:
                           - name: name
                             value: acs-deploy-check
                           - name: namespace
-                            value: redhat-dance
+                            value: dance-installer
                       params:
                         - name: deployment_url
                           value: https://raw.githubusercontent.com/jduimovich/quarkus-1/main/argocd/components/q/base/deployment.yaml
@@ -1306,7 +1357,7 @@ spec:
                           - name: name
                             value: acs-image-check
                           - name: namespace
-                            value: redhat-dance
+                            value: dance-installer
                       params:
                         - name: image
                           value: quay.io/team-helium/miner
@@ -1323,7 +1374,7 @@ spec:
                           - name: name
                             value: acs-image-scan
                           - name: namespace
-                            value: redhat-dance
+                            value: dance-installer
                       params:
                         - name: image
                           value: quay.io/team-helium/miner

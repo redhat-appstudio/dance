@@ -11,14 +11,14 @@
       set -o pipefail
 
       echo -n "* Waiting for route: "
-      until kubectl get route -n redhat-dance installer-developer-hub -o name --ignore-not-found >/dev/null ; do
+      until kubectl get route installer-developer-hub -o name --ignore-not-found >/dev/null ; do
         echo -n "."
         sleep 3
       done
       echo "OK"
 
       echo -n "* Waiting for UI: "
-      URL="https://$(kubectl get route -n redhat-dance installer-developer-hub -o jsonpath='{.spec.host}')"
+      URL="https://$(kubectl get route installer-developer-hub -o jsonpath='{.spec.host}')"
       until curl --fail --location --output /dev/null --silent "$URL"; do
         echo -n "."
         sleep 3

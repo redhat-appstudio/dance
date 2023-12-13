@@ -37,7 +37,7 @@ set_defaults() {
     cd "$SCRIPT_DIR/.." >/dev/null
     pwd
   )"
-  NAMESPACE="redhat-dance"
+  NAMESPACE="dance-installer"
 }
 
 parse_args() {

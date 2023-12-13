@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1beta1
 kind: ArgoCD
 metadata:
-  name: developer-argocd
+  name: {{ .Chart.Name }}-argocd
 spec:
   server:
     autoscale:
@@ -121,4 +121,6 @@ spec:
       requests:
         cpu: 250m
         memory: 1Gi
+  extraConfig:
+    accounts.admin-{{ .Chart.Name }}: apiKey
 {{ end }}

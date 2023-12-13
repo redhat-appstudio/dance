@@ -29,14 +29,14 @@ This helm chart installs and configures the following projects/products :
 
 3. Install Dance
 
-    `helm install rhtap-dance/dance --generate-name --namespace redhat-dance --values values.yaml`
+    `helm install rhtap-dance/dance --generate-name --namespace dance-installer --values values.yaml`
 
     Sample output:
     
     ```
     NAME: dance-1700107222
     LAST DEPLOYED: Wed Nov 15 23:00:25 2023
-    NAMESPACE: redhat-dance
+    NAMESPACE: dance-installer
     STATUS: deployed
     REVISION: 1
     TEST SUITE: None
@@ -45,7 +45,7 @@ This helm chart installs and configures the following projects/products :
 
 3. Uninstall Dance
 
-    `helm uninstall --namespace redhat-dance dance-1700107222`
+    `helm uninstall --namespace dance-installer dance-1700107222`
 
 4. Upgrade an existing installation of Dance
 
