@@ -117,7 +117,7 @@ parse_args() {
 init() {
   helm repo add dance https://redhat-appstudio.github.io/helm-repository/ >/dev/null
   helm repo update dance >/dev/null
-  helm dependencies update >/dev/null
+  # helm dependencies update >/dev/null
 }
 
 delete() {

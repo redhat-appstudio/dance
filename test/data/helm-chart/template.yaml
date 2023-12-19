@@ -258,7 +258,7 @@ spec:
           env:
           - name: NPM_CONFIG_USERCONFIG
             value: /opt/app-root/src/.npmrc.dynamic-plugins
-          image: 'quay.io/rhdh/rhdh-hub-rhel9:1.0-200'
+          image: 'registry.redhat.io/rhdh/rhdh-hub-rhel9:1.0-200'
           imagePullPolicy: Always
           name: install-dynamic-plugins
           volumeMounts:
@@ -275,7 +275,7 @@ spec:
           workingDir: /opt/app-root/src
       containers:
         - name: backstage-backend
-          image: quay.io/rhdh/rhdh-hub-rhel9:1.0-200
+          image: registry.redhat.io/rhdh/rhdh-hub-rhel9:1.0-200
           imagePullPolicy: "Always"
           args:
             - "--config"
@@ -855,7 +855,40 @@ spec:
               echo "Configuration successful"
         
                 
+        - name: configure-developer-hub
+          image: "quay.io/codeready-toolchain/oc-client-base:latest"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -o errexit
+              set -o nounset
+              set -o pipefail
         
+              CHART="dance"
+        
+              echo -n "* Waiting for route: "
+              until kubectl get route installer-developer-hub -o name >/dev/null ; do
+                echo -n "."
+                sleep 3
+              done
+              HOSTNAME="$(kubectl get routes installer-developer-hub -o jsonpath="{.spec.host}")"
+              echo -n "."
+              if [ "$(kubectl get secret "$CHART-developer-hub-secret" -o name --ignore-not-found | wc -l)" = "0" ]; then
+                kubectl create secret generic "$CHART-developer-hub-secret" \
+                  --from-literal="hostname=$HOSTNAME" >/dev/null
+              fi
+              echo "OK"
+        
+              echo -n "* Waiting for UI: "
+              until curl --fail --location --output /dev/null --silent "https://$HOSTNAME"; do
+                echo -n "."
+                sleep 3
+              done
+              echo "OK"
+        
+              echo
+              echo "Configuration successful"
         
                 
         - name: configure-gitops
@@ -1173,6 +1206,21 @@ spec:
                           secretKeyRef:
                             name: dance-argocd-secret
                             key: api-token
+                      - name: DEVELOPER_HUB_HOSTNAME
+                        valueFrom:
+                          secretKeyRef:
+                            name: dance-developer-hub-secret
+                            key: hostname
+                      - name: PIPELINES_PAC_GH_SECRET
+                        valueFrom:
+                          secretKeyRef:
+                            name: dance-pipelines-secret
+                            key: webhook-github-secret
+                      - name: PIPELINES_PAC_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: dance-pipelines-secret
+                            key: webhook-url
                       image: "k8s.gcr.io/hyperkube:v1.12.1"
                       name: setup
                       script: |
@@ -1183,11 +1231,24 @@ spec:
                 
                         # Output information in YAML so that it can easily be
                         # post-processed if necessary.
-                        cat << EOF
+                        cat << _EOF_
                         gitops:
                           api-token: \$ARGOCD_TOKEN
                           hostname: \$ARGOCD_HOSTNAME
-                        EOF
+                        developer-hub:
+                          hostname: \$DEVELOPER_HUB_HOSTNAME
+                        pipelines:
+                          pipelines-as-code:
+                            github:
+                              # The docs URL explains how to setup the GitHub Application.
+                              # Set dummy values for the homepage URL and webhook URL, and
+                              # replace them with the final values after the chart is installed.
+                              docs-url: https://pipelinesascode.com/docs/install/github_apps/
+                              homepage-url: https://\$DEVELOPER_HUB_HOSTNAME
+                              webhook:
+                                secret: \$PIPELINES_PAC_GH_SECRET
+                                url: \$PIPELINES_PAC_URL
+                        _EOF_
                       workingDir: /tmp
                 
               EOF
@@ -1219,10 +1280,15 @@ spec:
               #
               # All actions MUST be idempotent
               #
-              TEKTON_NAMESPACE="openshift-pipelines"
+              CHART="dance"
+              PIPELINES_NAMESPACE="openshift-pipelines"
         
               echo -n "* Waiting for pipelines operator deployment: "
-              until kubectl get namespace "$TEKTON_NAMESPACE" >/dev/null 2>&1; do
+              until kubectl get namespace "$PIPELINES_NAMESPACE" >/dev/null 2>&1; do
+                echo -n "."
+                sleep 3
+              done
+              until kubectl get route -n "$PIPELINES_NAMESPACE" pipelines-as-code-controller >/dev/null 2>&1; do
                 echo -n "."
                 sleep 3
               done
@@ -1260,10 +1326,10 @@ spec:
         
               echo -n "* Configuring Chains secret: "
               SECRET="signing-secrets"
-              if [ "$(kubectl get secret -n "$TEKTON_NAMESPACE" "$SECRET" -o jsonpath='{.data}' --ignore-not-found --allow-missing-template-keys)" == "" ]; then
+              if [ "$(kubectl get secret -n "$PIPELINES_NAMESPACE" "$SECRET" -o jsonpath='{.data}' --ignore-not-found --allow-missing-template-keys)" == "" ]; then
                 # Delete secret/signing-secrets if already exists since by default cosign creates immutable secrets
                 echo -n "."
-                kubectl delete secrets  -n "$TEKTON_NAMESPACE" "$SECRET" --ignore-not-found=true
+                kubectl delete secrets  -n "$PIPELINES_NAMESPACE" "$SECRET" --ignore-not-found=true
         
                 # To make this run conveniently without user input let's create a random password
                 echo -n "."
@@ -1272,14 +1338,34 @@ spec:
                 # Generate the key pair secret directly in the cluster.
                 # The secret should be created as immutable.
                 echo -n "."
-                env COSIGN_PASSWORD=$RANDOM_PASS cosign generate-key-pair "k8s://$TEKTON_NAMESPACE/$SECRET" >/dev/null
+                env COSIGN_PASSWORD=$RANDOM_PASS cosign generate-key-pair "k8s://$PIPELINES_NAMESPACE/$SECRET" >/dev/null
               fi
               # If the secret is not marked as immutable, make it so.
-              if [ "$(kubectl get secret -n "$TEKTON_NAMESPACE" "$SECRET" -o jsonpath='{.immutable}')" != "true" ]; then
+              if [ "$(kubectl get secret -n "$PIPELINES_NAMESPACE" "$SECRET" -o jsonpath='{.immutable}')" != "true" ]; then
                 echo -n "."
-                kubectl patch secret -n "$TEKTON_NAMESPACE" "$SECRET" --dry-run=client -o yaml \
+                kubectl patch secret -n "$PIPELINES_NAMESPACE" "$SECRET" --dry-run=client -o yaml \
                   --patch='{"immutable": true}' \
                 | kubectl apply -f - >/dev/null
+              fi
+              echo "OK"
+        
+              echo -n "* Configuring Pipelines-as-Code: "
+              if [ "$(kubectl get secret "$CHART-pipelines-secret" -o name --ignore-not-found | wc -l)" = "0" ]; then
+                echo -n "."
+                WEBHOOK_SECRET="$(openssl rand -hex 20)"
+                kubectl create secret generic "$CHART-pipelines-secret" \
+                  --from-literal="webhook-github-secret=$WEBHOOK_SECRET" \
+                  --from-literal="webhook-url=$(kubectl get routes -n "$PIPELINES_NAMESPACE" pipelines-as-code-controller -o jsonpath="https://{.spec.host}")" >/dev/null
+              else
+                WEBHOOK_SECRET="$(kubectl get secret "$CHART-pipelines-secret" ) -o jsonpath="{.data.webhook-github-secret}" | base64 -d"
+              fi
+              if [ "$(kubectl get secret -n "$PIPELINES_NAMESPACE" "pipelines-as-code-secret" -o name --ignore-not-found | wc -l)" = "0" ]; then
+                echo -n "."
+                kubectl -n "$PIPELINES_NAMESPACE" create secret generic pipelines-as-code-secret \
+                  --from-literal github-application-id="123456" \
+                  --from-literal github-private-key="$(echo "SW5zZXJ0IHRoZSBwcml2YXRlIGtleSBkYXRhLCBpbmNsdWRpbmcgdGhlICctLS0tIC4uLiAtLS0tJwpoZWFkZXIgYW5kIGZvb3Rlci4=" | base64 -d)" \
+                  --from-literal webhook.secret="$WEBHOOK_SECRET" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
               fi
               echo "OK"
         

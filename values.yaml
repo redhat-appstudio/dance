@@ -25,3 +25,10 @@ acs:
 # developer-hub:
   # This should be removed once RHDH is GA
   # quay-token: eyAbC123...rhdh...890XyZ
+pipelines:
+  pipelines-as-code:
+    github:
+      application-id: 123456
+      private-key: |
+        Insert the private key data, including the '---- ... ----'
+        header and footer.

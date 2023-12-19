@@ -1,0 +1,7 @@
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: my_name
+  namespace: my_namespace
+spec:
+  url: 'https://github.com/my_org/my_repo'
