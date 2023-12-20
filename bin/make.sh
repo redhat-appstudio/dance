@@ -117,7 +117,14 @@ parse_args() {
 init() {
   helm repo add dance https://redhat-appstudio.github.io/helm-repository/ >/dev/null
   helm repo update dance >/dev/null
-  # helm dependencies update >/dev/null
+  helm dependencies update >/dev/null
+  # RHDH does not have a proper helm repository yet, so the chart is downloaded manually
+  RHDH_VERSION="1.0.0-1"
+  mkdir -p "$HELM_CHART/charts"
+  if [ ! -e "$HELM_CHART/charts/developer-hub-$RHDH_VERSION.tgz" ]; then
+    find "$HELM_CHART/charts" -name developer-hub-\* -delete
+    curl --fail --location --output "$HELM_CHART/charts/developer-hub-$RHDH_VERSION.tgz" --silent "https://github.com/rhdh-bot/openshift-helm-charts/raw/developer-hub-$RHDH_VERSION/charts/redhat/redhat/developer-hub/$RHDH_VERSION/developer-hub-$RHDH_VERSION.tgz"
+  fi
 }
 
 delete() {
