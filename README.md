@@ -23,7 +23,11 @@ This helm chart installs and configures the following projects/products :
 
 ## CLI
 
-0. Login to an OpenShift 4.14 cluster and create a new Project.
+0. Login to an OpenShift 4.14 cluster and create a new project `dance-installer`.
+
+    `oc login -u kubeadmin -p <password> <openshift cluster API URL>`
+    
+    `oc new-project dance-installer`
 
 1. Add the helm repository to your local system 
 
